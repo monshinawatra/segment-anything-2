@@ -7,6 +7,7 @@
 import os
 import warnings
 from threading import Thread
+import cv2
 
 import numpy as np
 import torch
@@ -89,13 +90,13 @@ def mask_to_box(masks: torch.Tensor):
     return bbox_coords
 
 
-def _load_img_as_tensor(img_path, image_size):
-    img_pil = Image.open(img_path)
-    img_np = np.array(img_pil.convert("RGB").resize((image_size, image_size)))
+def _load_img_as_tensor(img_array, image_size):
+    img_pil = Image.fromarray(img_array).convert("RGB")
+    img_np = np.array(img_pil.resize((image_size, image_size)))
     if img_np.dtype == np.uint8:  # np.uint8 is expected for JPEG images
         img_np = img_np / 255.0
     else:
-        raise RuntimeError(f"Unknown image dtype: {img_np.dtype} on {img_path}")
+        raise RuntimeError(f"Unknown image dtype: {img_np.dtype}")
     img = torch.from_numpy(img_np).permute(2, 0, 1)
     video_width, video_height = img_pil.size  # the original video size
     return img, video_height, video_width
@@ -161,7 +162,7 @@ class AsyncVideoFrameLoader:
 
 
 def load_video_frames(
-    video_path,
+    frames,
     image_size,
     offload_video_to_cpu,
     img_mean=(0.485, 0.456, 0.406),
@@ -176,32 +177,33 @@ def load_video_frames(
 
     You can load a frame asynchronously by setting `async_loading_frames` to `True`.
     """
-    if isinstance(video_path, str) and os.path.isdir(video_path):
-        jpg_folder = video_path
-    else:
-        raise NotImplementedError("Only JPEG frames are supported at this moment")
+    # if isinstance(video_path, str) and os.path.isdir(video_path):
+    #     jpg_folder = video_path
+    # else:
+    #     raise NotImplementedError("Only JPEG frames are supported at this moment")
 
-    frame_names = [
-        p
-        for p in os.listdir(jpg_folder)
-        if os.path.splitext(p)[-1] in [".jpg", ".jpeg", ".JPG", ".JPEG"]
-    ]
-    frame_names.sort(key=lambda p: int(os.path.splitext(p)[0]))
-    num_frames = len(frame_names)
+    # frame_names = [
+    #     p
+    #     for p in os.listdir(jpg_folder)
+    #     if os.path.splitext(p)[-1] in [".jpg", ".jpeg", ".JPG", ".JPEG"]
+    # ]
+    # frame_names.sort(key=lambda p: int(os.path.splitext(p)[0]))
+    num_frames = len(frames)
     if num_frames == 0:
-        raise RuntimeError(f"no images found in {jpg_folder}")
-    img_paths = [os.path.join(jpg_folder, frame_name) for frame_name in frame_names]
+        raise RuntimeError(f"no images found in the")
+    # img_paths = [os.path.join(jpg_folder, frame_name) for frame_name in frame_names]
     img_mean = torch.tensor(img_mean, dtype=torch.float32)[:, None, None]
     img_std = torch.tensor(img_std, dtype=torch.float32)[:, None, None]
 
     if async_loading_frames:
-        lazy_images = AsyncVideoFrameLoader(
-            img_paths, image_size, offload_video_to_cpu, img_mean, img_std
-        )
-        return lazy_images, lazy_images.video_height, lazy_images.video_width
+        raise NotImplementedError("Async loading is not supported at this moment")
+        # lazy_images = AsyncVideoFrameLoader(
+        #     img_paths, image_size, offload_video_to_cpu, img_mean, img_std
+        # )
+        # return lazy_images, lazy_images.video_height, lazy_images.video_width
 
     images = torch.zeros(num_frames, 3, image_size, image_size, dtype=torch.float32)
-    for n, img_path in enumerate(tqdm(img_paths, desc="frame loading (JPEG)")):
+    for n, img_path in enumerate(tqdm(frames, desc="frame loading (JPEG)")):
         images[n], video_height, video_width = _load_img_as_tensor(img_path, image_size)
     if not offload_video_to_cpu:
         images = images.cuda()
